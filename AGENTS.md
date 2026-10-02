@@ -8,3 +8,5 @@
 > Commits you push to the connected branch sync back to Lovable and show up in
 > the editor, so keep the branch in a working state.
 <!-- LOVABLE:END -->
+
+- The PLOTOS FUND app lives as a self-contained page in public/plotos/ and the home page shows it full-screen; edit that file directly so the existing trading engine and Biquote feed stay untouched.
