@@ -14,7 +14,6 @@ export const Route = createFileRoute("/")({
     ],
     links: [{ rel: "stylesheet", href: "https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Noto+Sans+Arabic:wght@400;600&display=swap" }],
   }),
-  ssr: false,
   component: App,
 });
 
@@ -132,7 +131,7 @@ function App() {
                 <div className="flex-1">
                   <div className="text-xs text-muted-foreground">{fmt(((s.bid - s.low) / s.low) * 100, 2)}% · {s.spread * 10 ** s.digits | 0}</div>
                   <div className="font-bold">{s.name}</div>
-                  <div className="text-[11px] text-muted-foreground">{new Date().toLocaleTimeString("en-GB")}</div>
+                  <div className="text-[11px] text-muted-foreground"><span suppressHydrationWarning>{new Date().toLocaleTimeString("en-GB")}</span></div>
                 </div>
                 <Price v={s.bid} d={s.digits} dir={s.dir} sub={`L: ${fmt(s.low, s.digits)}`} />
                 <Price v={s.bid + s.spread} d={s.digits} dir={s.dir} sub={`H: ${fmt(s.high, s.digits)}`} />
