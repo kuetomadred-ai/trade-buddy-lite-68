@@ -2028,16 +2028,20 @@ function openDrawer(){var u=user();if(!u)return;
   $$('#drawer [data-go]').forEach(function(b){b.onclick=function(){closeDrawer();navGo('admin')}});
   $$('#drawer [data-act="out"]').forEach(function(b){b.onclick=function(){doLogout()}});
   $('#drawer').classList.add('on');$('#dOvl').classList.add('on');return}
- var items=[['quotes',T('Quotes')],['charts','Trading Terminal'],['trade',T('Trade')],['hist','History'],['prop','Prop Firm'],['broker','Broker & Wallet'],['profile',T('Profile')]];
- $('#drawer').innerHTML='<div class="dlogo"><span class="pmark">P</span>PLOTOS</div>'+
- items.map(function(it){return'<button class="ditem '+(view===it[0]?'on':'')+'" data-go="'+it[0]+'">'+it[1]+'</button>'}).join('')+
- '<div class="dsep"></div>'+
- '<button class="ditem" data-go="notifs">Notifications</button>'+
- (isStaff(u)?'<button class="ditem" data-go="admin">Staff Console</button>':'')+
- '<div style="margin-top:auto"><button class="ditem" data-act="out">Log out</button></div>';
+ var a=myAcc(),accountName=a?(a.kind==='PAPER'?'Demo':'Zero'):'Trading account',server=a?'PLOTOS-MT5 · #'+a.login:'No active account';
+ var items=[
+  ['trade','⌁','Trade',''],['messages','▤','News',''],['messages','✉','Mailbox','8'],['hist','▧','Journal',''],
+  ['profile','⚙','Settings','★'],['messages','▦','Economic calendar','Ads'],['prop','♟','Traders Community',''],
+  ['broker','◇','MQL5 Algo Trading',''],['profile','?','User guide',''],['profile','ⓘ','About','']];
+ $('#drawer').innerHTML='<div class="drawer-account"><div class="drawer-brand"><span class="pmark">P</span><div><strong>PLOTOS FUND</strong><small>MetaTrader 5</small></div></div>'+ 
+  '<div class="drawer-meta"><div><b>'+esc(accountName)+'</b><small>'+esc(server)+'</small></div>'+(a&&a.kind==='PAPER'?'<span class="demo-tag">Demo</span>':'')+'</div>'+ 
+  '<button class="manage-link" data-act="accounts">Manage accounts</button></div><div class="drawer-list">'+
+  items.map(function(it){return'<button class="ditem '+(view===it[0]?'on':'')+'" data-go="'+it[0]+'"><span class="di">'+it[1]+'</span><span>'+it[2]+'</span>'+(it[3]?'<span class="count">'+it[3]+'</span>':'')+'</button>'}).join('')+
+  (isStaff(u)?'<div class="dsep"></div><button class="ditem" data-go="admin"><span class="di">⌘</span><span>Staff Console</span></button>':'')+
+  '<div class="dsep"></div><button class="ditem" data-act="out"><span class="di">↪</span><span>Log out</span></button></div>';
  $$('#drawer [data-go]').forEach(function(b){b.onclick=function(){var g=b.getAttribute('data-go');closeDrawer();
-  if(g==='notifs'){navGo('messages')}
-  else navGo(g)}});
+  navGo(g)}});
+ var am=$('#drawer [data-act="accounts"]');if(am)am.onclick=function(){closeDrawer();accountsModal()};
  $$('#drawer [data-act="out"]').forEach(function(b){b.onclick=function(){doLogout()}});
  $('#drawer').classList.add('on');$('#dOvl').classList.add('on')}
 function closeDrawer(){$('#drawer').classList.remove('on');$('#dOvl').classList.remove('on')}
@@ -2514,7 +2518,7 @@ function renderQuotes(){var el=$('#v-quotes');
   var list=SYIDS.filter(function(s){return mwCategoryMatches(s)&&SYMBOLS[s].cat===cat&&(!mwQ||s.toLowerCase().indexOf(mwQ.toLowerCase())>=0||SYMBOLS[s].desc.toLowerCase().indexOf(mwQ.toLowerCase())>=0)});
   if(!list.length)return;
   html+='<div class="cat-h">'+cat.toUpperCase()+'</div>'+list.map(function(s){return mwRow(s)}).join('')});
- html+='<div class="pad" style="font-size:10px;color:var(--dim);line-height:1.8">Exclusive market data: <b>Biquote</b> REST + SignalR. <span style="color:var(--ac)">LAST</span> = Biquote market-closed quote; <span style="color:var(--wn)">STALE</span> prices cannot open or trigger virtual trades.</div>';
+ html+='<div class="pad quotes-foot" style="font-size:10px;color:var(--dim);line-height:1.8">Exclusive market data: <b>Biquote</b> REST + SignalR. <span style="color:var(--ac)">LAST</span> = Biquote market-closed quote; <span style="color:var(--wn)">STALE</span> prices cannot open or trigger virtual trades.</div>';
  el.innerHTML=html;
  $('#alBtn').onclick=alertsModal;$('#smBtn').onclick=symbolManager;
  $$('[data-mwcat]').forEach(function(b){b.onclick=function(){mwCat=b.getAttribute('data-mwcat');renderQuotes()}});
