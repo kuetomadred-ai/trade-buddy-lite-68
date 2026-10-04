@@ -10,3 +10,4 @@
 <!-- LOVABLE:END -->
 
 - The PLOTOS FUND app lives as a self-contained page in public/plotos/ and the home page shows it full-screen; edit that file directly so the existing trading engine and Biquote feed stay untouched.
+- Keep chart interaction on Lightweight Charts plus a pointer-event canvas overlay, so live prices, orders, and saved drawings share one coordinate system.

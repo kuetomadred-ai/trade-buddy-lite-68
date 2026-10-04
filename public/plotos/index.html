@@ -385,6 +385,9 @@ html[data-theme="light"] #oscHandle{background:#fff}
 #oscHandle:before{content:'';width:46px;height:3.5px;border-radius:2px;background:#2B3346}
 .oscTag{position:absolute;top:3px;left:10px;z-index:5;font-size:9.5px;color:#8792AB;font-family:var(--mono);pointer-events:none;letter-spacing:.5px}
 #drawCv{position:absolute;inset:0;z-index:4;touch-action:none}
+.chart-live-btn{position:absolute;right:72px;bottom:30px;z-index:7;width:36px;height:36px;border:1px solid var(--ln2);border-radius:18px;background:rgba(14,21,38,.9);color:#4D8DFF;display:none;align-items:center;justify-content:center;font-size:19px;box-shadow:0 3px 12px rgba(0,0,0,.28);touch-action:manipulation}
+.chart-live-btn.on{display:flex}.chart-live-btn:active{transform:scale(.94)}
+html[data-theme="light"] .chart-live-btn{background:rgba(255,255,255,.94)}
 .cmeta{display:none;position:absolute;top:6px;left:10px;z-index:5;pointer-events:none;line-height:1.45}
 .cmeta .l1{font-size:14.5px;font-weight:700;color:#4D8DFF;display:flex;align-items:center;gap:7px}
 .cmeta .l1 .tf{font-weight:600;font-size:12.5px}
@@ -1339,12 +1342,12 @@ function ensureChartLib(){
    s.onerror=function(){try{s.remove()}catch(e){};next()};
    document.head.appendChild(s)})()});
  return libPromise}
-var chart={c:null,cs:null,ls:null,ar:null,is:{},oc:null,os:{},cur:null,candleArr:[],kSrc:'Biquote',lines:[],plRefs:[],ordLines:[],sym:'',tf:'5m',style:'candles',crosshair:false,sessOn:false,dtOn:false,dragMode:false,oscH:140,token:0};
+var chart={c:null,cs:null,ls:null,ar:null,is:{},oc:null,os:{},cur:null,candleArr:[],kSrc:'Biquote',lines:[],plRefs:[],ordLines:[],spreadLines:[],liveLines:{},sym:'',tf:'5m',style:'candles',crosshair:false,sessOn:false,dtOn:false,dragMode:false,oscH:140,token:0,following:true,gesture:null,drawRaf:0};
 function resetChartIfStale(){
  var el=$('#chartEl');
  if(chart.c&&(!el||!el.isConnected||chart.c._el!==el)){
   try{chart.c.remove()}catch(e){}
-  chart.c=null;chart.cs=null;chart.ls=null;chart.ar=null;chart.is={};chart.cur=null;
+  chart.c=null;chart.cs=null;chart.ls=null;chart.ar=null;chart.is={};chart.cur=null;chart.liveLines={};
  if(chart.oc){try{chart.oc.remove()}catch(e){}chart.oc=null;chart.os={}}}}
 function oscOn(){var S=DB.settings.ind;return!!(S.rsi||S.stoch||S.macd||S.atr||S.mom||S.cci||S.adx)}
 function oscLabel(){var S=DB.settings.ind,L=[];
@@ -1374,7 +1377,7 @@ function chartMount(){
  ov('vwap','#26A69A',1,2);I.donU=ov('donU','rgba(245,166,35,.6)',1,2);I.donL=ov('donL','rgba(245,166,35,.6)',1,2);
  I.psar=chart.c.addLineSeries({color:'#F5A623',lineWidth:1,visible:false,priceLineVisible:false,lastValueVisible:false,crosshairMarkerVisible:false});
  ov('tenkan','#4D8DFF',1);ov('kijun','#EF5350',1);
- chart.c.timeScale().subscribeVisibleLogicalRangeChange(function(){scheduleDrawRedraw()});
+ chart.c.timeScale().subscribeVisibleLogicalRangeChange(function(){scheduleDrawRedraw();updateLiveButton()});
  chart.c.subscribeClick(function(param){
   try{
    if(!param.point||chart.dragMode||DT.mode)return;
@@ -1644,6 +1647,7 @@ function paintDtBar(){var bar=$('#dtBar');if(!bar)return;
  $('#dtClear').onclick=function(){if(!symDraws().length)return;confirmM('Clear drawings','Remove all drawings for this symbol?','Clear',true).then(function(ok){if(ok){DB.settings.drawings[termSym]=[];DSEL.idx=-1;save();paintDtBar();syncCvCapture();redrawDrawings()}})}}
 function syncCvCapture(){var cv=cvEl();if(!cv)return;
  cv.style.pointerEvents=(DT.mode||chart.dragMode||DSEL.idx>=0)?'auto':'none'}
+function selectDrawing(i){DSEL.idx=i;DSEL.drag=null;syncCvCapture();redrawDrawings()}
 function cvPos(e){var cv=cvEl(),r=cv.getBoundingClientRect();
  return{x:e.clientX-r.left,y:e.clientY-r.top}}
 function ptFromXY(x,y){
@@ -1681,6 +1685,9 @@ function hitDrawing(xy){
    if(xy.x>Math.min(c1.x,c2.x)-8&&xy.x<Math.max(c1.x,c2.x)+8&&xy.y>Math.min(c1.y,c2.y)-8&&xy.y<Math.max(c1.y,c2.y)+8)return i}
   else if(d.type==='fib'){if(dSegDist(xy.x,xy.y,c1.x,c1.y,c2.x,c2.y)<16)return i}}
  return -1}
+function hitDrawingHandle(d,xy){
+ var p1=toXY(d.p1),p2=d.p2?toXY(d.p2):null;if(p1&&Math.hypot(xy.x-p1.x,xy.y-p1.y)<18)return'p1';
+ if(p2&&Math.hypot(xy.x-p2.x,xy.y-p2.y)<18)return'p2';return null}
 function eraseAt(xy){
  var arr=symDraws();
  var hi=hitDrawing(xy);
@@ -1702,14 +1709,14 @@ function bindDrawEvents(){
    var arr=symDraws(),d=arr[DSEL.idx];
    if(!d){DSEL.idx=-1;DSEL.drag=null;syncCvCapture();redrawDrawings();return}
    var bp=badgePos(d);
-   if(bp&&Math.hypot(xy.x-bp.x,xy.y-bp.y)<18){
+   if(bp&&Math.hypot(xy.x-bp.x,xy.y-bp.y)<22){
     arr.splice(DSEL.idx,1);DSEL.idx=-1;DSEL.drag=null;
     save();syncCvCapture();redrawDrawings();
     toast('Drawing deleted','');e.preventDefault();return}
-   var hi=hitDrawing(xy);
+   var hi=hitDrawing(xy),handle=hitDrawingHandle(d,xy);
    if(hi===DSEL.idx){
     var s1=toXY(d.p1),s2=d.p2?toXY(d.p2):null;
-    if(s1){DSEL.drag={lx:xy.x,ly:xy.y,s1:s1,s2:s2,i:hi};
+    if(s1){DSEL.drag={lx:xy.x,ly:xy.y,s1:s1,s2:s2,i:hi,handle:handle};
      try{cv.setPointerCapture(e.pointerId)}catch(_){}
      e.preventDefault();return}}
    DSEL.idx=-1;DSEL.drag=null;syncCvCapture();redrawDrawings();return}
@@ -1730,9 +1737,10 @@ function bindDrawEvents(){
    var ts=chart.c.timeScale();
    function cv2(x,y){var t=ts.coordinateToTime(x);var pr=chart.cs.coordinateToPrice(y);
     return{t:t!=null?t:Math.floor(Date.now()/1e3),pr:pr!=null?pr:0}}
-   var n1=cv2(g.s1.x+dx,g.s1.y+dy);
-   d.p1={t:n1.t,pr:n1.pr};
-   if(d.p2&&g.s2){var n2=cv2(g.s2.x+dx,g.s2.y+dy);d.p2={t:n2.t,pr:n2.pr}}
+   if(g.handle==='p1'){d.p1=cv2(g.s1.x+dx,g.s1.y+dy)}
+   else if(g.handle==='p2'&&d.p2&&g.s2){d.p2=cv2(g.s2.x+dx,g.s2.y+dy)}
+   else{var n1=cv2(g.s1.x+dx,g.s1.y+dy);d.p1={t:n1.t,pr:n1.pr};
+    if(d.p2&&g.s2){var n2=cv2(g.s2.x+dx,g.s2.y+dy);d.p2={t:n2.t,pr:n2.pr}}}
    redrawDrawings();e.preventDefault()}});
  function finish(){
   if(DT.cur){
@@ -1740,7 +1748,7 @@ function bindDrawEvents(){
    if(d.type==='hline'||d.type==='vline')d.p2=null;
    var arr=symDraws();
    if(arr.length>=40)arr.shift();
-   arr.push(d);DSEL.idx=arr.length-1;DSEL.drag=null;
+   arr.push(d);DSEL.idx=arr.length-1;DSEL.drag=null;DT.mode=null;
    syncCvCapture();save();redrawDrawings();return}
   if(DRAG){endLineDrag();return}
   if(DSEL.drag){DSEL.drag=null;save();redrawDrawings()}}
@@ -1766,22 +1774,31 @@ function bindPriceScaleGesture(){
   if(view!=='charts'||!chart.c||DRAG||DT.mode)return;
   var r=box.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
   if(x<r.width-72||y<0||y>r.height)return;
-  var o=chart.c.options().rightPriceScale,sm=o.scaleMargins||{top:.1,bottom:.1};
-  chart._axisDrag={y:y,top:sm.top,bottom:sm.bottom,h:Math.max(1,box.clientHeight)};
+  var pr=chart.cs.coordinateToPrice(y),sm=(DB.settings.priceMargins||{top:.08,bottom:.12});
+  chart._axisDrag={y:y,price:pr,top:sm.top,bottom:sm.bottom,h:Math.max(1,box.clientHeight)};
   chart.c.priceScale('right').applyOptions({autoScale:false});
   try{box.setPointerCapture(e.pointerId)}catch(_){ }
   e.preventDefault();e.stopPropagation()
  },true);
  box.addEventListener('pointermove',function(e){
   var g=chart._axisDrag;if(!g)return;
-  var r=box.getBoundingClientRect(),delta=(e.clientY-r.top-g.y)/g.h,top=Math.max(.02,Math.min(.42,g.top+delta)),bottom=Math.max(.02,Math.min(.42,g.bottom-delta));
+  var r=box.getBoundingClientRect(),delta=(e.clientY-r.top-g.y)/g.h,top=Math.max(.025,Math.min(.44,g.top+delta*.7)),bottom=Math.max(.025,Math.min(.44,g.bottom-delta*.7));
   chart.c.priceScale('right').applyOptions({autoScale:false,scaleMargins:{top:top,bottom:bottom}});e.preventDefault();e.stopPropagation()
  },true);
- box.addEventListener('wheel',function(e){var r=box.getBoundingClientRect(),x=e.clientX-r.left;if(x<r.width-72)return;var o=chart.c.options().rightPriceScale,sm=o.scaleMargins||{top:.08,bottom:.12},z=e.deltaY>0?1.08:.92,top=Math.max(.02,Math.min(.46,sm.top*z)),bottom=Math.max(.02,Math.min(.46,sm.bottom*z));chart.c.priceScale('right').applyOptions({autoScale:false,scaleMargins:{top:top,bottom:bottom}});e.preventDefault();e.stopPropagation()},{capture:true,passive:false});
+ box.addEventListener('wheel',function(e){var r=box.getBoundingClientRect(),x=e.clientX-r.left;if(x<r.width-72)return;var dy=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?100:1),sm=DB.settings.priceMargins||{top:.08,bottom:.12},z=Math.exp(dy*.0015),anchor=Math.max(.05,Math.min(.95,(e.clientY-r.top)/Math.max(1,r.height))),room=Math.max(.06,Math.min(.86,(sm.top+sm.bottom)*z)),top=Math.max(.025,Math.min(.44,room*anchor)),bottom=Math.max(.025,Math.min(.44,room*(1-anchor)));DB.settings.priceMargins={top:top,bottom:bottom};chart.c.priceScale('right').applyOptions({autoScale:false,scaleMargins:DB.settings.priceMargins});scheduleDrawRedraw();e.preventDefault();e.stopPropagation()},{capture:true,passive:false});
  box.addEventListener('dblclick',function(e){var r=box.getBoundingClientRect();if(e.clientX-r.left<r.width-72)return;chart.c.priceScale('right').applyOptions({autoScale:true,scaleMargins:{top:.08,bottom:.12}});chart._axisDrag=null;e.preventDefault();e.stopPropagation()},{capture:true});
  function endAxis(e){if(!chart._axisDrag)return;var o=chart.c.options().rightPriceScale;DB.settings.priceMargins=o.scaleMargins||null;chart._axisDrag=null;save();e.preventDefault();e.stopPropagation()}
  box.addEventListener('pointerup',endAxis,true);box.addEventListener('pointercancel',endAxis,true)
 }
+function updateLiveButton(){var b=$('#chartLive');if(!b||!chart.c||!chart.candleArr.length)return;
+ var r=chart.c.timeScale().getVisibleLogicalRange(),last=chart.candleArr.length-1;
+ chart.following=!!r&&r.to>=last-1;b.classList.toggle('on',!chart.following)}
+function followLive(){if(!chart.c)return;chart.following=true;chart.c.priceScale('right').applyOptions({autoScale:true,scaleMargins:{top:.08,bottom:.12}});DB.settings.priceMargins={top:.08,bottom:.12};chart.c.timeScale().scrollToRealTime();setTimeout(function(){scheduleDrawRedraw();updateLiveButton()},80)}
+function bindChartWheelZoom(){var box=$('#chartEl');if(!box||box._wheelBound)return;box._wheelBound=true;
+ box.addEventListener('wheel',function(e){var r=box.getBoundingClientRect(),x=e.clientX-r.left;if(x>=r.width-72||DT.mode||DSEL.drag)return;
+  var ts=chart.c.timeScale(),range=ts.getVisibleLogicalRange();if(!range)return;
+  var dy=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?100:1),factor=Math.exp(Math.max(-240,Math.min(240,dy))*.0018),span=Math.max(12,Math.min(chart.candleArr.length+80,(range.to-range.from)*factor)),ratio=Math.max(0,Math.min(1,x/Math.max(1,r.width-72))),anchor=range.from+(range.to-range.from)*ratio;
+  ts.setVisibleLogicalRange({from:anchor-span*ratio,to:anchor+span*(1-ratio)});chart.following=false;scheduleDrawRedraw();updateLiveButton();e.preventDefault();e.stopPropagation()},{passive:false,capture:true})}
 function manageTargets(){var a=myAcc();if(!a)return[];
  var t=[];
  accPositions(a).forEach(function(p){if(p.symbol!==chart.sym)return;
@@ -1868,8 +1885,7 @@ function redrawDrawings(){
     ctx.stroke()}}});}
 var redrawT=0;
 function scheduleDrawRedraw(){
- if(Date.now()-redrawT<200)return;redrawT=Date.now();
- redrawDrawings()}
+ if(chart.drawRaf)return;chart.drawRaf=requestAnimationFrame(function(){chart.drawRaf=0;redrawT=Date.now();redrawDrawings()})}
 function chartDrawMarkers(){if(!chart.cs)return;var C=DB.settings.chart||{};try{
  if(C.tradeHistory===false){chart.cs.setMarkers([]);return}
  var marks=[],a=myAcc(),now=Math.floor(Date.now()/1e3);
@@ -1885,7 +1901,7 @@ function chartDrawLines(){if(!chart.cs)return;var C=DB.settings.chart||{};
  chart.lines.forEach(function(l){try{chart.cs.removePriceLine(l)}catch(e){}});chart.lines=[];chart.plRefs=[];
  chart.ordLines.forEach(function(l){try{chart.cs.removePriceLine(l)}catch(e){}});chart.ordLines=[];
  if(chart.spreadLines)chart.spreadLines.forEach(function(l){try{chart.cs.removePriceLine(l)}catch(e){}});chart.spreadLines=[];
- var sq=Q[chart.sym],ss=SYMBOLS[chart.sym];if(sq&&ss&&sq.bid>0&&sq.ask>0){try{chart.spreadLines=[chart.cs.createPriceLine({price:sq.bid,color:'#4D8DFF',lineWidth:1,lineStyle:0,axisLabelVisible:true,title:'BID'})];if(C.askLine!==false)chart.spreadLines.push(chart.cs.createPriceLine({price:sq.ask,color:'#E85B61',lineWidth:1,lineStyle:0,axisLabelVisible:true,title:'ASK'}))}catch(e){}}
+ var sq=Q[chart.sym],ss=SYMBOLS[chart.sym];if(sq&&ss&&sq.bid>0&&sq.ask>0){try{chart.liveLines.bid=chart.cs.createPriceLine({price:sq.bid,color:'#4D8DFF',lineWidth:1,lineStyle:0,axisLabelVisible:true,title:'BID'});chart.spreadLines=[chart.liveLines.bid];if(C.askLine!==false){chart.liveLines.ask=chart.cs.createPriceLine({price:sq.ask,color:'#E85B61',lineWidth:1,lineStyle:0,axisLabelVisible:true,title:'ASK'});chart.spreadLines.push(chart.liveLines.ask)}}catch(e){}}
  var a=myAcc();if(!a)return;
  if(C.tradePositions!==false)accPositions(a).filter(function(p){return p.symbol===chart.sym}).forEach(function(p){
   try{var entry=chart.cs.createPriceLine({price:p.entry,color:'#4D8DFF',lineWidth:1,lineStyle:0,title:p.side.toUpperCase()+' '+p.lots});
@@ -1947,7 +1963,7 @@ function chartLoad(){return ensureChartLib().then(function(ok){
   if(res.data.length){setSeriesData();applyIndicators()}
   else{chart.cs.setData([]);chart.ls.setData([]);chart.ar.setData([]);chart.cur=null;
    toast('No candle history for '+chart.sym,'wn')}
-  frameChartWindow();setTimeout(frameChartWindow,250);chartDrawLines();chartDrawMarkers();redrawDrawings()
+   frameChartWindow();setTimeout(frameChartWindow,250);chart.following=true;chartDrawLines();chartDrawMarkers();redrawDrawings()
  }).catch(function(error){
   if(tok!==chart.token)return;
   chart.candleArr=[];chart.kSrc='Biquote';chart.cs.setData([]);chart.ls.setData([]);chart.ar.setData([]);chart.cur=null;
@@ -1959,6 +1975,8 @@ function frameChartWindow(){
  var last=chart.candleArr[chart.candleArr.length-1],from=last.time-TFSEC[chart.tf]*110,to=last.time+TFSEC[chart.tf]*6;
  try{chart.c.timeScale().setVisibleRange({from:from,to:to})}catch(e){}
 }
+function syncLivePriceLines(){if(!chart.cs)return;var q=Q[chart.sym],C=DB.settings.chart||{};if(!q||!(q.bid>0))return;
+ try{if(chart.liveLines.bid)chart.liveLines.bid.applyOptions({price:q.bid,title:'BID'});if(chart.liveLines.ask&&C.askLine!==false&&q.ask>0)chart.liveLines.ask.applyOptions({price:q.ask,title:'ASK'})}catch(e){}}
 var lastMeta='';
 function paintCmeta(){var m=$('#cmeta');if(!m)return;
  var S=SYMBOLS[termSym],q=Q[termSym];
@@ -1977,7 +1995,8 @@ function chartTick(sym,tick){if(!chart.cs||!chart.cur||sym!==chart.sym)return;va
   if(chart.style==='candles'){chart.cur=raw;chart.cs.update(raw)}
   else if(chart.style==='ha'){var ha=haData(chart.candleArr);chart.cur=ha[ha.length-1];chart.cs.update(chart.cur)}
   else if(chart.style==='line'){chart.cur=raw;chart.ls.update({time:raw.time,value:price})}
-  else{chart.cur=raw;chart.ar.update({time:raw.time,value:price})}}catch(e){}}
+  else{chart.cur=raw;chart.ar.update({time:raw.time,value:price})}
+  syncLivePriceLines();if(chart.following)chart.c.timeScale().scrollToRealTime();scheduleDrawRedraw()}catch(e){}}
 function tfModal(){
  var all=[['1m','M1'],['5m','M5'],['15m','M15'],['30m','M30'],['1h','H1'],['4h','H4'],['1d','D1'],['1w','W1'],['1mo','MN']];
  modal('<div class="radialHead">'+(TFLBL[chart.tf]||chart.tf)+' <small>TIMEFRAME</small></div><div class="radial">'+all.map(function(t,i){return'<button class="radialBtn '+(chart.tf===t[0]?'on':'')+'" data-tfp="'+t[0]+'" style="--i:'+i+'">'+t[1]+'</button>'}).join('')+'<button class="radialCenter" onclick="closeModal()">×</button></div><div class="radialTools"><button title="Indicators" onclick="indicatorCatalog()">f</button><button title="Objects" onclick="closeModal();chart.dtOn=true;openCharts()">⌗</button><button title="Settings" onclick="chartSettings()">⚙</button><button title="New order" onclick="closeModal();orderTicket()">＋</button></div>');
@@ -2184,7 +2203,7 @@ function openCharts(){var el=$('#v-charts');
  '</div>'+ 
  (chart.sessOn?'<div class="sessrow" id="sessRow"></div>':'')+
  '<div id="chartBox"><span id="mBid" style="display:none"></span><span id="mAsk" style="display:none"></span><span id="mSymName" style="display:none"></span><span id="mSymState" style="display:none"></span><span id="mSymStatus" style="display:none"></span><div class="charttitle"><b id="chartTitleSym">'+termSym+'</b><span>›</span><b id="chartTitleTf">'+(TFLBL[chart.tf]||chart.tf)+'</b><small id="chartTitleDesc">'+esc((SYMBOLS[termSym]||{}).desc||'')+'</small></div>'+ 
-  '<div id="mainWrap"><div id="chartEl"></div><canvas id="drawCv"></canvas>'+
+  '<div id="mainWrap"><div id="chartEl"></div><canvas id="drawCv"></canvas><button class="chart-live-btn" id="chartLive" aria-label="Return to current price" title="Current price">›</button>'+
    '<div class="cmeta" id="cmeta"></div>'+
    '<div id="dtBar" style="display:'+(chart.dtOn?'flex':'none')+'"></div>'+
    '<div id="posStrip"></div></div>'+
@@ -2204,9 +2223,10 @@ function openCharts(){var el=$('#v-charts');
  $('#lotIn').onchange=function(){setLots(getLots())};
  $('#qSell').onclick=function(){quickTrade('sell')};
  $('#qBuy').onclick=function(){quickTrade('buy')};
+ $('#chartLive').onclick=followLive;
  if(chart.sessOn)paintSessions();
  chart.sym=termSym;chartLoad();renderStrip();
- paintDtBar();bindDrawEvents();bindTargetGestures();bindPriceScaleGesture();bindOscHandle();syncCvCapture()}
+ paintDtBar();bindDrawEvents();bindTargetGestures();bindPriceScaleGesture();bindChartWheelZoom();bindOscHandle();syncCvCapture()}
 function bindOscHandle(){var h=$('#oscHandle');if(!h||h._b)return;h._b=1;
  var sy=0,sh=0;
  h.addEventListener('pointerdown',function(e){sy=e.clientY;sh=$('#oscPane').offsetHeight;h.setPointerCapture(e.pointerId);e.preventDefault()});
@@ -3304,7 +3324,7 @@ function feedPaint(){
   if(ob)ob.classList.toggle('closed',!marketOpen(s2));
   var mc2=$('#mktChip');
   if(mc2)mc2.style.display=marketOpen(s2)?'none':'';
-  scheduleDrawRedraw();paintCmeta();
+  syncLivePriceLines();scheduleDrawRedraw();paintCmeta();
   var acc=myAcc();
   if(acc)accPositions(acc).forEach(function(p){
    var se=document.querySelector('[data-spnl="'+p.id+'"]');
