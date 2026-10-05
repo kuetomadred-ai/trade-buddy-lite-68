@@ -1358,7 +1358,7 @@ function chartMount(){
  if(chart.c){mountOsc();return true}
  var el=$('#chartEl');
  if(!el||typeof LightweightCharts==='undefined')return false;
- chart.c=LightweightCharts.createChart(el,{autoSize:true,
+ chart.c=LightweightCharts.createChart(el,{autoSize:true,localization:{locale:"en-US"},
   layout:{background:{type:'solid',color:'#000000'},textColor:'#9AA3B5',fontFamily:'IBM Plex Mono'},
   grid:{vertLines:{color:'#0F1522'},horzLines:{color:'#0F1522'}},
   rightPriceScale:{visible:true,borderColor:'#1B2540',borderVisible:true,ticksVisible:true,entireTextOnly:true,minimumWidth:62,scaleMargins:DB.settings.priceMargins||{top:.08,bottom:.12}},
@@ -1399,7 +1399,7 @@ function mountOsc(){var el=$('#oscEl');
  if(chart.oc){if(chart.oc._el===el&&el.isConnected)return true;
   try{chart.oc.remove()}catch(e){}chart.oc=null;chart.os={}}
  var light=document.documentElement.getAttribute('data-theme')==='light';
- var oc=LightweightCharts.createChart(el,{autoSize:true,
+ var oc=LightweightCharts.createChart(el,{autoSize:true,localization:{locale:"en-US"},
   layout:{background:{type:'solid',color:light?'#ffffff':'#000000'},textColor:'#9AA3B5',fontFamily:'IBM Plex Mono'},
   grid:{vertLines:{color:light?'#EDF0F6':'#0F1522'},horzLines:{color:light?'#EDF0F6':'#0F1522'}},
   rightPriceScale:{borderColor:'#1B2540',entireTextOnly:true},
@@ -2634,7 +2634,7 @@ function drawEqCurve(a){if(typeof LightweightCharts==='undefined'){
   ensureChartLib().then(function(ok){if(ok)drawEqCurve(a)});return}
  var el=$('#eqChart');if(!el)return;
  try{if(drawEqCurve.c){try{drawEqCurve.c.remove()}catch(e){}}
-  var c=LightweightCharts.createChart(el,{autoSize:true,layout:{background:{type:'solid',color:'#0E1526'},textColor:'#67739A'},grid:{vertLines:{color:'#141C33'},horzLines:{color:'#141C33'}},rightPriceScale:{borderColor:'#1B2540'},timeScale:{borderColor:'#1B2540'},handleScale:false,handleScroll:false});
+  var c=LightweightCharts.createChart(el,{autoSize:true,localization:{locale:"en-US"},layout:{background:{type:'solid',color:'#0E1526'},textColor:'#67739A'},grid:{vertLines:{color:'#141C33'},horzLines:{color:'#141C33'}},rightPriceScale:{borderColor:'#1B2540'},timeScale:{borderColor:'#1B2540'},handleScale:false,handleScroll:false});
   drawEqCurve.c=c;
   var s=c.addAreaSeries({lineColor:'#4D8DFF',topColor:'rgba(77,141,255,.25)',bottomColor:'rgba(77,141,255,0)',lineWidth:2});
   var data=[],lastT=0;
