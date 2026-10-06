@@ -1999,7 +1999,7 @@ function chartTick(sym,tick){if(!chart.cs||!chart.cur||sym!==chart.sym)return;va
   syncLivePriceLines();if(chart.following)chart.c.timeScale().scrollToRealTime();scheduleDrawRedraw()}catch(e){}}
 function tfModal(){
  var all=[['1m','M1'],['5m','M5'],['15m','M15'],['30m','M30'],['1h','H1'],['4h','H4'],['1d','D1'],['1w','W1'],['1mo','MN']];
- modal('<div class="radialHead">'+(TFLBL[chart.tf]||chart.tf)+' <small>TIMEFRAME</small></div><div class="radial">'+all.map(function(t,i){return'<button class="radialBtn '+(chart.tf===t[0]?'on':'')+'" data-tfp="'+t[0]+'" style="--i:'+i+'">'+t[1]+'</button>'}).join('')+'<button class="radialCenter" onclick="closeModal()">×</button></div><div class="radialTools"><button title="Indicators" onclick="indicatorCatalog()">f</button><button title="Objects" onclick="closeModal();chart.dtOn=true;openCharts()">⌗</button><button title="Settings" onclick="chartSettings()">⚙</button><button title="New order" onclick="closeModal();orderTicket()">＋</button></div>');
+ modal('<div class="radialHead">'+(TFLBL[chart.tf]||chart.tf)+' <small>TIMEFRAME</small></div><div class="radial">'+all.map(function(t,i){return'<button class="radialBtn '+(chart.tf===t[0]?'on':'')+'" data-tfp="'+t[0]+'" style="--i:'+i+'">'+t[1]+'</button>'}).join('')+'<button class="radialCenter" onclick="closeModal()">×</button></div><div class="radialTools"><button title="Indicators" onclick="indicatorCatalog()">f</button><button title="Objects" onclick="objectsModal()">⌗</button><button title="Settings" onclick="chartSettings()">⚙</button><button title="New order" onclick="closeModal();orderTicket()">＋</button></div>');
  $$('[data-tfp]').forEach(function(ch){ch.onclick=function(){var next=ch.getAttribute('data-tfp');if(TFS.indexOf(next)<0){toast('Biquote interval unavailable','wn');return}chart.tf=next;DB.settings.lastTf=next;save();closeModal();DSEL.idx=-1;DSEL.drag=null;syncCvCapture();chartLoad();var t=$('#chartTitleTf');if(t)t.textContent=TFLBL[next]||next}})}
 
 /* shell — Quotes → Charts → Trade → History → Messages; advanced tools stay in drawer */
@@ -2203,7 +2203,13 @@ function openCharts(){var el=$('#v-charts');
  '</div>'+ 
  (chart.sessOn?'<div class="sessrow" id="sessRow"></div>':'')+
  '<div id="chartBox"><span id="mBid" style="display:none"></span><span id="mAsk" style="display:none"></span><span id="mSymName" style="display:none"></span><span id="mSymState" style="display:none"></span><span id="mSymStatus" style="display:none"></span><div class="charttitle"><b id="chartTitleSym">'+termSym+'</b><span>›</span><b id="chartTitleTf">'+(TFLBL[chart.tf]||chart.tf)+'</b><small id="chartTitleDesc">'+esc((SYMBOLS[termSym]||{}).desc||'')+'</small></div>'+ 
-  '<div id="mainWrap"><div id="chartEl"></div><canvas id="drawCv"></canvas><button class="chart-live-btn" id="chartLive" aria-label="Return to current price" title="Current price">›</button>'+
+   '<div id="mainWrap"><div id="chartEl"></div><canvas id="drawCv"></canvas><button class="chart-live-btn" id="chartLive" aria-label="Return to current price" title="Current price">›</button>'+
+    '<div id="dSelBar" class="dselbar"><span class="grip">⋮⋮</span><b id="dSelName"></b>'+
+     '<button id="dsEdit" aria-label="Edit object"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg></button>'+
+     '<button id="dsCopy" aria-label="Copy object"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V4H4v13h4"/></svg></button>'+
+     '<button id="dsDel" class="del" aria-label="Delete object"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6"/></svg></button>'+
+     '<button id="dsClose" aria-label="Deselect" style="color:#8C93A3">✕</button></div>'+
+    '<div id="dUndo" class="dundo">Object deleted <button id="dsUndo">UNDO</button></div>'+
    '<div class="cmeta" id="cmeta"></div>'+
    '<div id="dtBar" style="display:'+(chart.dtOn?'flex':'none')+'"></div>'+
    '<div id="posStrip"></div></div>'+
@@ -2226,7 +2232,9 @@ function openCharts(){var el=$('#v-charts');
  $('#chartLive').onclick=followLive;
  if(chart.sessOn)paintSessions();
  chart.sym=termSym;chartLoad();renderStrip();
- paintDtBar();bindDrawEvents();bindTargetGestures();bindPriceScaleGesture();bindChartWheelZoom();bindOscHandle();syncCvCapture()}
+  $('#dsEdit').onclick=editSelected;$('#dsCopy').onclick=copySelected;$('#dsDel').onclick=deleteSelected;$('#dsClose').onclick=function(){selectDrawing(-1)};$('#dsUndo').onclick=undoDelete;
+  try{var mw=$('#mainWrap');if(window.ResizeObserver&&mw){new ResizeObserver(function(){scheduleDrawRedraw()}).observe(mw)}}catch(e){}
+  paintDtBar();bindDrawEvents();bindTargetGestures();bindPriceScaleGesture();bindChartWheelZoom();bindOscHandle();syncCvCapture();paintSelBar()}
 function bindOscHandle(){var h=$('#oscHandle');if(!h||h._b)return;h._b=1;
  var sy=0,sh=0;
  h.addEventListener('pointerdown',function(e){sy=e.clientY;sh=$('#oscPane').offsetHeight;h.setPointerCapture(e.pointerId);e.preventDefault()});
