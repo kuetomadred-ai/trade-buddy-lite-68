@@ -399,6 +399,18 @@ html[data-theme="light"] .cmeta .l2{color:#151B26}
 .dtb{width:34px;height:32px;border:1px solid var(--ln2);border-radius:8px;background:rgba(14,21,38,.85);color:var(--mut);font-size:13px;display:flex;align-items:center;justify-content:center}
 .dtb.on{color:var(--ac);border-color:var(--ac)}
 html[data-theme="light"] .dtb{background:rgba(255,255,255,.92)}
+.dselbar{position:absolute;left:50%;bottom:44px;transform:translate(-50%,8px);z-index:9;display:flex;align-items:center;gap:2px;padding:4px 6px;border-radius:24px;background:rgba(38,42,52,.96);box-shadow:0 6px 20px rgba(0,0,0,.45);opacity:0;pointer-events:none;transition:opacity .16s,transform .16s}
+.dselbar.on{opacity:1;pointer-events:auto;transform:translate(-50%,0)}
+.dselbar button{width:42px;height:38px;border-radius:19px;display:flex;align-items:center;justify-content:center;color:#4D8DFF;touch-action:manipulation}
+.dselbar button svg{width:20px;height:20px}.dselbar button.del{color:#EF5350}.dselbar button:active{background:rgba(255,255,255,.1)}
+.dselbar .grip{color:#7A8194;padding:0 4px 0 8px;font-size:12px;letter-spacing:-2px}
+.dselbar b{font-size:10px;color:#C9CED8;max-width:84px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:2px;font-weight:500}
+.dundo{position:absolute;left:10px;bottom:44px;z-index:10;display:flex;align-items:center;gap:12px;padding:9px 13px;border-radius:8px;background:#2F7DE1;color:#fff;font-size:11.5px;opacity:0;pointer-events:none;transition:opacity .16s}
+.dundo.on{opacity:1;pointer-events:auto}.dundo button{color:#fff;font-weight:700;letter-spacing:.5px}
+.dsw{display:flex;gap:9px;flex-wrap:wrap}.dsw button{width:34px;height:34px;border-radius:50%;border:2px solid transparent;outline:1px solid var(--ln2)}.dsw button.on{border-color:var(--tx)}
+.dsw button.w{width:auto;border-radius:8px;padding:0 13px;outline:none;border:1px solid var(--ln2);color:var(--mut)}.dsw button.w.on{color:var(--ac);border-color:var(--ac)}
+.obfav{display:flex;gap:6px;padding:8px 0 14px;flex-wrap:wrap}.obfav button{width:46px;height:42px;color:#147AF3;font-size:21px;border-radius:8px}.obfav button:active{background:#1A1A1A}
+.obx{color:#EF5350;font-size:17px;width:40px;height:40px;margin-left:auto}
 #posStrip{position:absolute;bottom:6px;left:6px;right:6px;display:flex;gap:5px;overflow-x:auto;z-index:6;scrollbar-width:none}
 #posStrip::-webkit-scrollbar{display:none}
 .pchip{flex-shrink:0;display:flex;align-items:center;gap:5px;background:rgba(14,21,38,.88);border:1px solid var(--ln2);border-radius:8px;padding:4px 8px;font-size:10px;font-family:var(--mono);color:var(--tx);cursor:pointer;backdrop-filter:blur(3px)}
@@ -1382,8 +1394,8 @@ function chartMount(){
   try{
    if(!param.point||chart.dragMode||DT.mode)return;
    var hi=hitDrawing(param.point);
-   if(hi>=0){DSEL.idx=hi;DSEL.drag=null;syncCvCapture();redrawDrawings();return}
-   if(DSEL.idx>=0){DSEL.idx=-1;DSEL.drag=null;syncCvCapture();redrawDrawings();return}
+    if(hi>=0){selectDrawing(hi);return}
+    if(DSEL.idx>=0){selectDrawing(-1);return}
    var tgs=manageTargets();if(!tgs.length)return;
    var best=null,bd=14;
    tgs.forEach(function(t){var y=chart.cs.priceToCoordinate(t.price);if(y==null)return;
@@ -1626,134 +1638,181 @@ function indicatorsModal(){var S=DB.settings.ind;
   $$('[data-st]').forEach(function(x){x.classList.toggle('on',x.getAttribute('data-st')===chart.style)});
   setSeriesData();chartDrawLines();chartDrawMarkers();redrawDrawings()}})}
 
-/* drawing system: draw, select, move, delete via X badge */
+/* drawing system: MT5-style place, select, drag, edit, copy, delete + undo */
 var DT={mode:null,cur:null};
 var DSEL={idx:-1,drag:null};
-var DRAG=null,lastDragDraw=0;
-var DTOOLS=[{id:null,i:'✕',t:'Off'},{id:'trend',i:'╱',t:'Trendline'},{id:'hline',i:'─',t:'Horizontal'},{id:'vline',i:'│',t:'Vertical'},{id:'fib',i:'⊞',t:'Fibonacci'},{id:'rect',i:'▭',t:'Rectangle'},{id:'erase',i:'⌫',t:'Erase'}];
+var DRAG=null,lastDragDraw=0,DUNDO=null,LOUPE=null,lastPT='mouse';
+var FIBL=[0,.236,.382,.5,.618,.786,1];
+var DCOLORS=['#EF5350','#4D8DFF','#26A69A','#E3B34C','#B06CE8','#E8ECF6'];
+var DTOOLS=[{id:null,i:'✕',t:'Off'},{id:'trend',i:'╱',t:'Trendline'},{id:'arrow',i:'↗',t:'Arrow'},{id:'hline',i:'─',t:'Horizontal'},{id:'vline',i:'│',t:'Vertical'},{id:'fib',i:'⊞',t:'Fibonacci'},{id:'rect',i:'▭',t:'Rectangle'}];
+function PT(){return lastPT==='touch'||lastPT==='pen'}
 function symDraws(){if(!DB.settings.drawings[termSym])DB.settings.drawings[termSym]=[];return DB.settings.drawings[termSym]}
 function cvEl(){return document.getElementById('drawCv')}
-function stopDraw(){DT.mode=null;DT.cur=null;DSEL.idx=-1;DSEL.drag=null;DRAG=null;paintDtBar()}
+function dName(d){return{trend:'Trendline',arrow:'Arrow',hline:'Horizontal Line',vline:'Vertical Line',fib:'Fibonacci',rect:'Rectangle'}[d.type]||d.type}
+function dDesc(d){var dg=(SYMBOLS[termSym]||{digits:5}).digits;return pxf(d.p1.pr,dg)+(d.p2&&d.type!=='hline'&&d.type!=='vline'?' → '+pxf(d.p2.pr,dg):'')}
+function dColor(d){if(d.color)return d.color;return(d.type==='rect'||d.type==='fib')?'#E3B34C':'#7DB0FF'}
+function stopDraw(){DT.mode=null;DT.cur=null;DSEL.idx=-1;DSEL.drag=null;DRAG=null;LOUPE=null;paintDtBar();paintSelBar()}
 function paintDtBar(){var bar=$('#dtBar');if(!bar)return;
- bar.style.display=chart.dtOn?'flex':'none';
- if(!chart.dtOn)return;
- bar.innerHTML=DTOOLS.map(function(t){return'<button class="dtb '+(DT.mode===t.id&&t.id!==null?'on':'')+'" data-dt="'+(t.id||'')+'" title="'+t.t+'">'+t.i+'</button>'}).join('')+'<button class="dtb" id="dtDelete" title="Delete selected">⌫</button><button class="dtb" id="dtClear" title="Clear drawings">♲</button>';
- $$('#dtBar .dtb').forEach(function(b){b.onclick=function(){
-  var id=b.getAttribute('data-dt')||null;
-  DT.mode=(DT.mode===id)?null:id;DT.cur=null;
-  if(id===null){DSEL.idx=-1;DSEL.drag=null}
-  paintDtBar();syncCvCapture();redrawDrawings()}});
- $('#dtDelete').onclick=function(){var a=symDraws();if(DSEL.idx>=0&&a[DSEL.idx]){a.splice(DSEL.idx,1);DSEL.idx=-1;save();paintDtBar();syncCvCapture();redrawDrawings();toast('Drawing deleted','')}};
- $('#dtClear').onclick=function(){if(!symDraws().length)return;confirmM('Clear drawings','Remove all drawings for this symbol?','Clear',true).then(function(ok){if(ok){DB.settings.drawings[termSym]=[];DSEL.idx=-1;save();paintDtBar();syncCvCapture();redrawDrawings()}})}}
+  bar.style.display=chart.dtOn?'flex':'none';
+  if(!chart.dtOn)return;
+  bar.innerHTML=DTOOLS.map(function(t){return'<button class="dtb '+(DT.mode===t.id&&t.id!==null?'on':'')+'" data-dt="'+(t.id||'')+'" title="'+t.t+'">'+t.i+'</button>'}).join('')+'<button class="dtb" id="dtList" title="Objects list">☰</button>';
+  $$('#dtBar .dtb[data-dt]').forEach(function(b){b.onclick=function(){
+   var id=b.getAttribute('data-dt')||null;
+   DT.mode=(DT.mode===id)?null:id;DT.cur=null;
+   if(DT.mode){DSEL.idx=-1;DSEL.drag=null;toast(dName({type:DT.mode})+': tap or drag on the chart','')}
+   paintDtBar();paintSelBar();syncCvCapture();scheduleDrawRedraw()}});
+  $('#dtList').onclick=objectsModal}
 function syncCvCapture(){var cv=cvEl();if(!cv)return;
- cv.style.pointerEvents=(DT.mode||chart.dragMode||DSEL.idx>=0)?'auto':'none'}
-function selectDrawing(i){DSEL.idx=i;DSEL.drag=null;syncCvCapture();redrawDrawings()}
+  cv.style.pointerEvents=(DT.mode||chart.dragMode||DSEL.idx>=0)?'auto':'none'}
+function paintSelBar(){var b=$('#dSelBar');if(!b)return;var d=DSEL.idx>=0?symDraws()[DSEL.idx]:null;
+  b.classList.toggle('on',!!d&&!DSEL.drag&&!DT.mode);var n=$('#dSelName');if(n&&d)n.textContent=dName(d)}
+function selectDrawing(i){DSEL.idx=i;DSEL.drag=null;syncCvCapture();paintSelBar();scheduleDrawRedraw()}
 function cvPos(e){var cv=cvEl(),r=cv.getBoundingClientRect();
- return{x:e.clientX-r.left,y:e.clientY-r.top}}
-function ptFromXY(x,y){
- var t=chart.c.timeScale().coordinateToTime(x);
- var pr=chart.cs.coordinateToPrice(y);
- return{t:t||(chart.cur?chart.cur.time:Math.floor(Date.now()/1e3)),pr:pr||(qt(termSym)?qt(termSym).last:0)}}
+  return{x:e.clientX-r.left,y:e.clientY-r.top}}
+function tfSec(){return TFSEC[chart.tf]||60}
+function timeToX(t){var ts=chart.c.timeScale(),x=ts.timeToCoordinate(t);if(x!=null)return x;
+  var a=chart.candleArr,n=a.length;if(!n)return null;var sec=tfSec(),l;
+  if(t>=a[n-1].time)l=n-1+(t-a[n-1].time)/sec;
+  else if(t<=a[0].time)l=(t-a[0].time)/sec;
+  else{var lo=0,hi=n-1;while(hi-lo>1){var m=(lo+hi)>>1;if(a[m].time<=t)lo=m;else hi=m}l=lo+(t-a[lo].time)/Math.max(1,a[hi].time-a[lo].time)}
+  return ts.logicalToCoordinate(l)}
+function xToTime(x){var ts=chart.c.timeScale(),a=chart.candleArr,n=a.length,l=ts.coordinateToLogical(x);
+  if(l==null||!n){var t=ts.coordinateToTime(x);return t!=null?t:Math.floor(Date.now()/1e3)}
+  var i=Math.floor(l),f=l-i,sec=tfSec();
+  if(i>=n-1)return Math.round(a[n-1].time+(l-(n-1))*sec);
+  if(i<0)return Math.round(a[0].time+l*sec);
+  return Math.round(a[i].time+f*(a[i+1].time-a[i].time))}
+function magnet(x,y,pr){var l=chart.c.timeScale().coordinateToLogical(x);if(l==null)return pr;var c=chart.candleArr[Math.round(l)];if(!c)return pr;
+  var best=pr,bd=PT()?16:9;[c.open,c.high,c.low,c.close].forEach(function(v){var yy=chart.cs.priceToCoordinate(v);if(yy!=null&&Math.abs(yy-y)<bd){bd=Math.abs(yy-y);best=v}});return best}
+function ptFromXY(x,y,snap){
+  var pr=chart.cs.coordinateToPrice(y);if(pr==null)pr=qt(termSym)?qt(termSym).last:0;
+  if(snap!==false)pr=magnet(x,y,pr);
+  return{t:xToTime(x),pr:pr}}
 function toXY(pt){
- if(!chart.cs||!pt)return null;
- var x=chart.c.timeScale().timeToCoordinate(pt.t);
- var y=chart.cs.priceToCoordinate(pt.pr);
- if(x===null||y===null)return null;
- return{x:x,y:y}}
+  if(!chart.cs||!pt)return null;
+  var x=timeToX(pt.t),y=chart.cs.priceToCoordinate(pt.pr);
+  if(x==null||y==null)return null;
+  return{x:x,y:y}}
 function dSegDist(px,py,x1,y1,x2,y2){
- var dx=x2-x1,dy=y2-y1,A=dx*dx+dy*dy;
- if(A===0)return Math.hypot(px-x1,py-y1);
- var t=Math.max(0,Math.min(1,((px-x1)*dx+(py-y1)*dy)/A));
- return Math.hypot(px-(x1+t*dx),py-(y1+t*dy))}
-function badgePos(d){
- var box=$('#mainWrap');if(!box)return null;
- var w=box.clientWidth,h=box.clientHeight;
- var c1=toXY(d.p1);if(!c1)return null;
- if(d.type==='hline')return{x:w*0.5,y:c1.y};
- if(d.type==='vline')return{x:c1.x,y:h*0.28};
- var c2=d.p2?toXY(d.p2):null;if(!c2)return null;
- return{x:(c1.x+c2.x)/2,y:(c1.y+c2.y)/2}}
-function hitDrawing(xy){
- var arr=symDraws();
- for(var i=arr.length-1;i>=0;i--){
-  var d=arr[i],c1=toXY(d.p1);if(!c1)continue;
-  if(d.type==='hline'){if(Math.abs(xy.y-c1.y)<12)return i;continue}
-  if(d.type==='vline'){if(Math.abs(xy.x-c1.x)<12)return i;continue}
-  var c2=d.p2?toXY(d.p2):null;if(!c2)continue;
-  if(d.type==='trend'){if(dSegDist(xy.x,xy.y,c1.x,c1.y,c2.x,c2.y)<14)return i}
-  else if(d.type==='rect'){
-   if(xy.x>Math.min(c1.x,c2.x)-8&&xy.x<Math.max(c1.x,c2.x)+8&&xy.y>Math.min(c1.y,c2.y)-8&&xy.y<Math.max(c1.y,c2.y)+8)return i}
-  else if(d.type==='fib'){if(dSegDist(xy.x,xy.y,c1.x,c1.y,c2.x,c2.y)<16)return i}}
- return -1}
-function hitDrawingHandle(d,xy){
- var p1=toXY(d.p1),p2=d.p2?toXY(d.p2):null;if(p1&&Math.hypot(xy.x-p1.x,xy.y-p1.y)<18)return'p1';
- if(p2&&Math.hypot(xy.x-p2.x,xy.y-p2.y)<18)return'p2';return null}
-function eraseAt(xy){
- var arr=symDraws();
- var hi=hitDrawing(xy);
- if(hi>=0){arr.splice(hi,1);if(DSEL.idx===hi){DSEL.idx=-1;syncCvCapture()}else if(DSEL.idx>hi)DSEL.idx--;
-  save();redrawDrawings()}}
+  var dx=x2-x1,dy=y2-y1,A=dx*dx+dy*dy;
+  if(A===0)return Math.hypot(px-x1,py-y1);
+  var t=Math.max(0,Math.min(1,((px-x1)*dx+(py-y1)*dy)/A));
+  return Math.hypot(px-(x1+t*dx),py-(y1+t*dy))}
+function dHit(d,xy,tol){var c1=toXY(d.p1);if(!c1)return false;
+  if(d.type==='hline')return Math.abs(xy.y-c1.y)<tol;
+  if(d.type==='vline')return Math.abs(xy.x-c1.x)<tol;
+  var c2=d.p2?toXY(d.p2):null;if(!c2)return false;
+  if(d.type==='trend'||d.type==='arrow')return dSegDist(xy.x,xy.y,c1.x,c1.y,c2.x,c2.y)<tol;
+  if(d.type==='rect'){var x1=Math.min(c1.x,c2.x),x2=Math.max(c1.x,c2.x),y1=Math.min(c1.y,c2.y),y2=Math.max(c1.y,c2.y);
+   return dSegDist(xy.x,xy.y,x1,y1,x2,y1)<tol||dSegDist(xy.x,xy.y,x1,y2,x2,y2)<tol||dSegDist(xy.x,xy.y,x1,y1,x1,y2)<tol||dSegDist(xy.x,xy.y,x2,y1,x2,y2)<tol}
+  if(d.type==='fib'){var fx1=Math.min(c1.x,c2.x),fx2=Math.max(c1.x,c2.x);
+   if(dSegDist(xy.x,xy.y,c1.x,c1.y,c2.x,c2.y)<tol)return true;
+   return FIBL.some(function(f){var yy=chart.cs.priceToCoordinate(d.p1.pr+(d.p2.pr-d.p1.pr)*f);return yy!=null&&xy.x>fx1-tol&&xy.x<fx2+tol&&Math.abs(xy.y-yy)<tol})}
+  return false}
+function hitDrawing(xy){var arr=symDraws(),tol=PT()?22:11;
+  for(var i=arr.length-1;i>=0;i--)if(dHit(arr[i],xy,tol))return i;return -1}
+function hitDrawingHandle(d,xy){if(d.type==='hline'||d.type==='vline')return null;
+  var r=PT()?26:14,p1=toXY(d.p1),p2=d.p2?toXY(d.p2):null;
+  if(p1&&Math.hypot(xy.x-p1.x,xy.y-p1.y)<r)return'p1';
+  if(p2&&Math.hypot(xy.x-p2.x,xy.y-p2.y)<r)return'p2';return null}
+function deleteSelected(){var a=symDraws(),d=a[DSEL.idx];if(!d)return;
+  a.splice(DSEL.idx,1);DUNDO={sym:termSym,d:d,i:DSEL.idx};save();selectDrawing(-1);
+  var el=$('#dUndo');if(el){el.classList.add('on');clearTimeout(el._t);el._t=setTimeout(function(){el.classList.remove('on');DUNDO=null},5000)}}
+function undoDelete(){if(!DUNDO)return;var a=DB.settings.drawings[DUNDO.sym]||(DB.settings.drawings[DUNDO.sym]=[]);
+  var i=Math.min(DUNDO.i,a.length);a.splice(i,0,DUNDO.d);DUNDO=null;var el=$('#dUndo');if(el)el.classList.remove('on');save();
+  if(termSym===Object.keys(DB.settings.drawings).find(function(k){return DB.settings.drawings[k]===a}))selectDrawing(i);else scheduleDrawRedraw()}
+function shiftPt(p,dx,dy){var c=toXY(p);if(!c)return p;var pr=chart.cs.coordinateToPrice(c.y+dy);return{t:xToTime(c.x+dx),pr:pr!=null?pr:p.pr}}
+function copySelected(){var a=symDraws(),d=a[DSEL.idx];if(!d)return;
+  var c=JSON.parse(JSON.stringify(d));c.p1=shiftPt(d.p1,26,-26);if(c.p2)c.p2=shiftPt(d.p2,26,-26);
+  a.push(c);save();selectDrawing(a.length-1);toast(dName(d)+' copied','')}
+function editSelected(){var i=DSEL.idx,d=symDraws()[i];if(!d)return;
+  function body(){return'<h4>'+dName(d)+' <small style="color:var(--dim);font-weight:400">'+esc(dDesc(d))+'</small></h4>'+
+   '<div class="fld"><label>COLOR</label><div class="dsw">'+DCOLORS.map(function(c){return'<button data-dc="'+c+'" style="background:'+c+'" class="'+(dColor(d)===c?'on':'')+'" aria-label="Color '+c+'"></button>'}).join('')+'</div></div>'+
+   '<div class="fld"><label>WIDTH</label><div class="dsw">'+[1,2,3].map(function(w){return'<button data-dw="'+w+'" class="w '+(Math.round(d.w||1)===w?'on':'')+'">'+w+' px</button>'}).join('')+'</div></div>'+
+   '<div class="fld"><label>STYLE</label><div class="dsw"><button data-ds="0" class="w '+(!d.dash?'on':'')+'">Solid</button><button data-ds="1" class="w '+(d.dash?'on':'')+'">Dashed</button></div></div>'+
+   '<div class="mrow-btns"><button class="btn red" id="deDel">Delete</button><button class="btn ghost" id="deCopy">Copy</button><button class="btn" onclick="closeModal()">Done</button></div>'}
+  function bind(){
+   $$('[data-dc]').forEach(function(b){b.onclick=function(){d.color=b.getAttribute('data-dc');upd()}});
+   $$('[data-dw]').forEach(function(b){b.onclick=function(){d.w=+b.getAttribute('data-dw');upd()}});
+   $$('[data-ds]').forEach(function(b){b.onclick=function(){d.dash=b.getAttribute('data-ds')==='1';upd()}});
+   $('#deDel').onclick=function(){closeModal();DSEL.idx=i;deleteSelected()};
+   $('#deCopy').onclick=function(){closeModal();DSEL.idx=i;copySelected()}}
+  function upd(){save();scheduleDrawRedraw();modal(body());bind()}
+  modal(body());bind()}
+function objectsModal(){var arr=symDraws();
+  modal('<div class="mt5screen"><div class="mt5top"><button class="back" onclick="closeModal()">‹</button><b>Objects</b><span class="grow"></span>'+(arr.length?'<button class="mt5icon" id="obClear" title="Delete all" style="color:#EF5350">⌫</button>':'')+'</div>'+
+   '<div class="mt5section"><div class="mt5sub">FAVORITE OBJECTS</div><div class="obfav">'+DTOOLS.filter(function(t){return t.id}).map(function(t){return'<button data-obt="'+t.id+'" title="'+t.t+'">'+t.i+'</button>'}).join('')+'</div>'+
+   '<div class="mt5sub">ON CHART · '+esc(termSym)+'</div></div>'+
+   (arr.length?arr.map(function(d,i){return'<div class="mt5row" data-obi="'+i+'"><i style="width:10px;height:10px;border-radius:50%;background:'+dColor(d)+';margin-right:12px"></i><span>'+dName(d)+'<small style="display:block">'+esc(dDesc(d))+'</small></span><button class="obx" data-obx="'+i+'" aria-label="Delete">✕</button></div>'}).join(''):'<div class="empty">No objects on this chart yet</div>')+'</div>');
+  $$('[data-obt]').forEach(function(b){b.onclick=function(){closeModal();if(view!=='charts')navGo('charts');chart.dtOn=true;DT.mode=b.getAttribute('data-obt');DSEL.idx=-1;var db=$('#dtBtn');if(db)db.classList.add('on');paintDtBar();paintSelBar();syncCvCapture();toast(dName({type:DT.mode})+': tap or drag on the chart','')}});
+  $$('[data-obi]').forEach(function(r){r.onclick=function(e){if(e.target.closest('[data-obx]'))return;closeModal();selectDrawing(+r.getAttribute('data-obi'))}});
+  $$('[data-obx]').forEach(function(b){b.onclick=function(e){e.stopPropagation();DSEL.idx=+b.getAttribute('data-obx');deleteSelected();objectsModal()}});
+  var oc=$('#obClear');if(oc)oc.onclick=function(){confirmM('Delete all objects','Remove every object on '+termSym+'?','Delete all',true).then(function(ok){if(ok){DB.settings.drawings[termSym]=[];save();selectDrawing(-1);closeModal()}})}}
+window.objectsModal=objectsModal;
 function bindDrawEvents(){
- var cv=cvEl();if(!cv||cv._bound)return;cv._bound=true;
- cv.addEventListener('pointerdown',function(e){
-  if(view!=='charts'||!chart.c)return;
-  var xy=cvPos(e);
-  if(DT.mode){
-   if(DT.mode==='erase'){eraseAt(xy);return}
-   var pt=ptFromXY(xy.x,xy.y);
-   DT.cur={type:DT.mode,p1:pt,p2:pt};
-   try{cv.setPointerCapture(e.pointerId)}catch(_){}
-   e.preventDefault();return}
-  if(chart.dragMode){lineDragStart(cv,e,xy);return}
-  if(DSEL.idx>=0){
-   var arr=symDraws(),d=arr[DSEL.idx];
-   if(!d){DSEL.idx=-1;DSEL.drag=null;syncCvCapture();redrawDrawings();return}
-   var bp=badgePos(d);
-   if(bp&&Math.hypot(xy.x-bp.x,xy.y-bp.y)<22){
-    arr.splice(DSEL.idx,1);DSEL.idx=-1;DSEL.drag=null;
-    save();syncCvCapture();redrawDrawings();
-    toast('Drawing deleted','');e.preventDefault();return}
-   var hi=hitDrawing(xy),handle=hitDrawingHandle(d,xy);
-   if(hi===DSEL.idx){
-    var s1=toXY(d.p1),s2=d.p2?toXY(d.p2):null;
-    if(s1){DSEL.drag={lx:xy.x,ly:xy.y,s1:s1,s2:s2,i:hi,handle:handle};
-     try{cv.setPointerCapture(e.pointerId)}catch(_){}
-     e.preventDefault();return}}
-   DSEL.idx=-1;DSEL.drag=null;syncCvCapture();redrawDrawings();return}
-  var hi2=hitDrawing(xy);
-  if(hi2>=0){DSEL.idx=hi2;DSEL.drag=null;syncCvCapture();redrawDrawings();e.preventDefault()}});
- cv.addEventListener('pointermove',function(e){
-  var xy=cvPos(e);
-  if(DT.cur){
-   var p2=ptFromXY(xy.x,xy.y);
-   if(DT.cur.type==='hline')p2={t:DT.cur.p1.t,pr:p2.pr};
-   if(DT.cur.type==='vline')p2={t:p2.t,pr:DT.cur.p1.pr};
-   DT.cur.p2=p2;redrawDrawings();e.preventDefault();return}
-  if(DRAG){dragLineMove(xy);e.preventDefault();return}
-  if(DSEL.drag){
-   var g=DSEL.drag,d=symDraws()[g.i];
-   if(!d||!chart.c){DSEL.drag=null;return}
+  var cv=cvEl();if(!cv||cv._bound)return;cv._bound=true;
+  cv.addEventListener('pointerdown',function(e){
+   lastPT=e.pointerType||'mouse';
+   if(view!=='charts'||!chart.c)return;
+   var xy=cvPos(e);
+   if(DT.mode){
+    var pt=ptFromXY(xy.x,xy.y);
+    DT.cur={type:DT.mode,p1:pt,p2:pt,color:'#EF5350',sx:xy.x,sy:xy.y};LOUPE={x:xy.x,y:xy.y,pr:pt.pr,t:pt.t};
+    try{cv.setPointerCapture(e.pointerId)}catch(_){}
+    e.preventDefault();scheduleDrawRedraw();return}
+   if(chart.dragMode){lineDragStart(cv,e,xy);return}
+   var arr=symDraws(),target=-1,handle=null;
+   if(DSEL.idx>=0&&arr[DSEL.idx]){handle=hitDrawingHandle(arr[DSEL.idx],xy);if(handle||dHit(arr[DSEL.idx],xy,PT()?24:12))target=DSEL.idx}
+   if(target<0)target=hitDrawing(xy);
+   if(target<0){selectDrawing(-1);return}
+   var d=arr[target],s1=toXY(d.p1);
+   DSEL.idx=target;
+   if(s1){DSEL.drag={lx:xy.x,ly:xy.y,s1:s1,s2:d.p2?toXY(d.p2):null,i:target,handle:handle,o1:d.p1,o2:d.p2,moved:false};try{cv.setPointerCapture(e.pointerId)}catch(_){}}
+   syncCvCapture();paintSelBar();scheduleDrawRedraw();e.preventDefault()});
+  cv.addEventListener('pointermove',function(e){
+   var xy=cvPos(e);
+   if(DT.cur){
+    var p2=ptFromXY(xy.x,xy.y);
+    if(DT.cur.type==='hline')p2={t:DT.cur.p1.t,pr:p2.pr};
+    if(DT.cur.type==='vline')p2={t:p2.t,pr:DT.cur.p1.pr};
+    if(DT.cur.type==='hline')DT.cur.p1={t:DT.cur.p1.t,pr:p2.pr};
+    if(DT.cur.type==='vline')DT.cur.p1={t:p2.t,pr:DT.cur.p1.pr};
+    DT.cur.p2=p2;LOUPE={x:xy.x,y:xy.y,pr:p2.pr,t:p2.t};scheduleDrawRedraw();e.preventDefault();return}
+   if(DRAG){dragLineMove(xy);e.preventDefault();return}
+   var g=DSEL.drag;if(!g)return;
+   var d=symDraws()[g.i];if(!d||!chart.c){DSEL.drag=null;return}
    var dx=xy.x-g.lx,dy=xy.y-g.ly;
-   var ts=chart.c.timeScale();
-   function cv2(x,y){var t=ts.coordinateToTime(x);var pr=chart.cs.coordinateToPrice(y);
-    return{t:t!=null?t:Math.floor(Date.now()/1e3),pr:pr!=null?pr:0}}
-   if(g.handle==='p1'){d.p1=cv2(g.s1.x+dx,g.s1.y+dy)}
-   else if(g.handle==='p2'&&d.p2&&g.s2){d.p2=cv2(g.s2.x+dx,g.s2.y+dy)}
-   else{var n1=cv2(g.s1.x+dx,g.s1.y+dy);d.p1={t:n1.t,pr:n1.pr};
-    if(d.p2&&g.s2){var n2=cv2(g.s2.x+dx,g.s2.y+dy);d.p2={t:n2.t,pr:n2.pr}}}
-   redrawDrawings();e.preventDefault()}});
- function finish(){
-  if(DT.cur){
-   var d=DT.cur;DT.cur=null;
-   if(d.type==='hline'||d.type==='vline')d.p2=null;
-   var arr=symDraws();
-   if(arr.length>=40)arr.shift();
-   arr.push(d);DSEL.idx=arr.length-1;DSEL.drag=null;DT.mode=null;
-   syncCvCapture();save();redrawDrawings();return}
-  if(DRAG){endLineDrag();return}
-  if(DSEL.drag){DSEL.drag=null;save();redrawDrawings()}}
- cv.addEventListener('pointerup',finish);
- cv.addEventListener('pointercancel',finish)}
+   if(!g.moved&&Math.hypot(dx,dy)<(PT()?5:3))return;
+   if(!g.moved){g.moved=true;paintSelBar()}
+   function at(s){return ptFromXY(s.x+dx,s.y+dy,!!g.handle)}
+   if(g.handle==='p1')d.p1=at(g.s1);
+   else if(g.handle==='p2'&&g.s2)d.p2=at(g.s2);
+   else if(d.type==='hline')d.p1={t:d.p1.t,pr:ptFromXY(g.s1.x,g.s1.y+dy).pr};
+   else if(d.type==='vline')d.p1={t:xToTime(g.s1.x+dx),pr:d.p1.pr};
+   else{d.p1=at(g.s1);if(g.s2)d.p2=at(g.s2)}
+   var cur=g.handle==='p2'?d.p2:d.p1;LOUPE={x:xy.x,y:xy.y,pr:cur.pr,t:cur.t};
+   scheduleDrawRedraw();e.preventDefault()});
+  function finish(e){
+   var cancel=!e||e.type==='pointercancel';LOUPE=null;
+   if(DT.cur){
+    var d=DT.cur;DT.cur=null;
+    if(cancel){scheduleDrawRedraw();return}
+    var up=cvPos(e),tap=Math.hypot(up.x-d.sx,up.y-d.sy)<8;
+    if(tap&&d.type!=='hline'&&d.type!=='vline')d.p2=ptFromXY(d.sx+80,d.sy-50,false);
+    delete d.sx;delete d.sy;
+    if(d.type==='hline'||d.type==='vline')d.p2=null;
+    var arr=symDraws();
+    if(arr.length>=60)arr.shift();
+    arr.push(d);DT.mode=null;paintDtBar();save();selectDrawing(arr.length-1);return}
+   if(DRAG){if(!cancel)endLineDrag();return}
+   if(DSEL.drag){var g=DSEL.drag;DSEL.drag=null;
+    if(cancel&&g.moved){var dd=symDraws()[g.i];if(dd){dd.p1=g.o1;dd.p2=g.o2}}
+    else if(g.moved)save();
+    paintSelBar();scheduleDrawRedraw()}}
+  cv.addEventListener('pointerup',finish);
+  cv.addEventListener('pointercancel',finish);
+  window.addEventListener('blur',function(){if(DT.cur||DSEL.drag)finish(null)});
+  document.addEventListener('visibilitychange',function(){if(document.hidden&&(DT.cur||DSEL.drag))finish(null)})}
 function bindTargetGestures(){
  var box=$('#chartEl');if(!box||box._targetBound)return;box._targetBound=true;
  box.addEventListener('pointerdown',function(e){
@@ -1783,7 +1842,7 @@ function bindPriceScaleGesture(){
  box.addEventListener('pointermove',function(e){
   var g=chart._axisDrag;if(!g)return;
   var r=box.getBoundingClientRect(),delta=(e.clientY-r.top-g.y)/g.h,top=Math.max(.025,Math.min(.44,g.top+delta*.7)),bottom=Math.max(.025,Math.min(.44,g.bottom-delta*.7));
-  chart.c.priceScale('right').applyOptions({autoScale:false,scaleMargins:{top:top,bottom:bottom}});e.preventDefault();e.stopPropagation()
+  chart.c.priceScale('right').applyOptions({autoScale:false,scaleMargins:{top:top,bottom:bottom}});scheduleDrawRedraw();e.preventDefault();e.stopPropagation()
  },true);
  box.addEventListener('wheel',function(e){var r=box.getBoundingClientRect(),x=e.clientX-r.left;if(x<r.width-72)return;var dy=e.deltaY*(e.deltaMode===1?16:e.deltaMode===2?100:1),sm=DB.settings.priceMargins||{top:.08,bottom:.12},z=Math.exp(dy*.0015),anchor=Math.max(.05,Math.min(.95,(e.clientY-r.top)/Math.max(1,r.height))),room=Math.max(.06,Math.min(.86,(sm.top+sm.bottom)*z)),top=Math.max(.025,Math.min(.44,room*anchor)),bottom=Math.max(.025,Math.min(.44,room*(1-anchor)));DB.settings.priceMargins={top:top,bottom:bottom};chart.c.priceScale('right').applyOptions({autoScale:false,scaleMargins:DB.settings.priceMargins});scheduleDrawRedraw();e.preventDefault();e.stopPropagation()},{capture:true,passive:false});
  box.addEventListener('dblclick',function(e){var r=box.getBoundingClientRect();if(e.clientX-r.left<r.width-72)return;chart.c.priceScale('right').applyOptions({autoScale:true,scaleMargins:{top:.08,bottom:.12}});chart._axisDrag=null;e.preventDefault();e.stopPropagation()},{capture:true});
@@ -1825,64 +1884,61 @@ function dragLineMove(xy){
  else{var p=DRAG.pos;
   if(DRAG.kind==='sl'){var ok=p.side==='buy'?pr<p.entry:pr>p.entry;if(ok)p.sl=pr}
   else if(DRAG.kind==='tp'){var ok2=p.side==='buy'?pr>p.entry:pr<p.entry;if(ok2)p.tp=pr}}
- var n=Date.now();if(n-lastDragDraw<60)return;lastDragDraw=n;chartDrawLines()}
+ if(!chart._lineRaf)chart._lineRaf=requestAnimationFrame(function(){chart._lineRaf=0;chartDrawLines()})}
 function endLineDrag(){if(!DRAG)return;var moved=DRAG,ord=moved.ord,pos=moved.pos;DRAG=null;chartDrawLines();
  confirmM(ord?'Modify order level':'Confirm level change',ord?'Save the new pending-order price?':'Save the new Stop Loss / Take Profit level?','Confirm',false).then(function(ok){
   if(!ok){if(ord)ord.price=moved.original.price;else{pos.sl=moved.original.sl;pos.tp=moved.original.tp}chartDrawLines();return}
   save();chartDrawLines();if(view==='trade')paintTrade(true);toast('Level updated','up')})}
+function fmtDT(t){var d=new Date(t*1000),M=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];function z(n){return(n<10?'0':'')+n}return d.getDate()+' '+M[d.getMonth()]+' '+z(d.getHours())+':'+z(d.getMinutes())}
+function axisTag(ctx,w,y,txt,bg,fg){var tw=62;ctx.fillStyle=bg;ctx.fillRect(w-tw,y-8,tw,16);ctx.fillStyle=fg||'#000';ctx.font='10px IBM Plex Mono';ctx.fillText(txt,w-tw+4,y+3.5)}
 function redrawDrawings(){
- var cv=cvEl();if(!cv||!chart.c)return;
- var box=$('#mainWrap');if(!box)return;
- var w=box.clientWidth,h=box.clientHeight,dpr=window.devicePixelRatio||1;
- if(cv.width!==w*dpr||cv.height!==h*dpr){cv.width=w*dpr;cv.height=h*dpr}
- var ctx=cv.getContext('2d');
- ctx.setTransform(dpr,0,0,dpr,0,0);
- ctx.clearRect(0,0,w,h);
- if(view!=='charts')return;
- var arr=symDraws();
- if(DT.cur)arr=arr.concat([DT.cur]);
- var light=document.documentElement.getAttribute('data-theme')==='light';
- var C1=light?'#2F6FE0':'#7DB0FF',C2='#E3B34C',CW=light?'#151B26':'#E8ECF6';
- arr.forEach(function(d,i){
-  var sel=(i===DSEL.idx&&DT.cur==null);
-  var p1=toXY(d.p1);if(!p1)return;
-  var p2=d.p2?toXY(d.p2):null;
-  ctx.lineWidth=sel?2.4:1.4;ctx.font='10px IBM Plex Mono';
-  if(d.type==='hline'){
-   ctx.strokeStyle=C1;ctx.beginPath();ctx.moveTo(0,p1.y);ctx.lineTo(w,p1.y);ctx.stroke();
-   ctx.fillStyle=C1;ctx.fillText(pxf(d.p1.pr,SYMBOLS[termSym].digits),6,p1.y-4)}
-  else if(d.type==='vline'){
-   ctx.strokeStyle=C1;ctx.beginPath();ctx.moveTo(p1.x,0);ctx.lineTo(p1.x,h);ctx.stroke()}
-  else if(p2){
-   if(d.type==='trend'){
-    ctx.strokeStyle=C1;ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke()}
-   else if(d.type==='rect'){
-    ctx.strokeStyle=C2;ctx.strokeRect(Math.min(p1.x,p2.x),Math.min(p1.y,p2.y),Math.abs(p2.x-p1.x),Math.abs(p2.y-p1.y))}
-   else if(d.type==='fib'){
-    var lv=[0,.236,.382,.5,.618,.786,1];
-    var x1=Math.min(p1.x,p2.x),x2=Math.max(p1.x,p2.x);
-    ctx.strokeStyle=C2;
-    lv.forEach(function(f){
-     var pr=d.p1.pr+(d.p2.pr-d.p1.pr)*f;
-     var yy=chart.cs.priceToCoordinate(pr);if(yy===null)return;
-     ctx.globalAlpha=.75;
-     ctx.beginPath();ctx.moveTo(x1,yy);ctx.lineTo(x2,yy);ctx.stroke();
-     ctx.globalAlpha=1;ctx.fillStyle=CW;
-     ctx.fillText(f.toFixed(3)+'  '+pxf(pr,SYMBOLS[termSym].digits),x2+4,yy+3)})}
-   if(sel){
-    ctx.fillStyle=C1;
-    [[p1.x,p1.y],[p2.x,p2.y]].forEach(function(pt){
-     ctx.beginPath();ctx.arc(pt[0],pt[1],4.5,0,7);ctx.fill()})}}
-  if(sel){
-   var bp=badgePos(d);
-   if(bp){
-    ctx.beginPath();ctx.arc(bp.x,bp.y,11,0,7);
-    ctx.fillStyle='#EF5350';ctx.fill();
-    ctx.strokeStyle='#fff';ctx.lineWidth=2;
-    ctx.beginPath();
-    ctx.moveTo(bp.x-4.5,bp.y-4.5);ctx.lineTo(bp.x+4.5,bp.y+4.5);
-    ctx.moveTo(bp.x+4.5,bp.y-4.5);ctx.lineTo(bp.x-4.5,bp.y+4.5);
-    ctx.stroke()}}});}
+  var cv=cvEl();if(!cv||!chart.c)return;
+  var box=$('#mainWrap');if(!box)return;
+  var w=box.clientWidth,h=box.clientHeight,dpr=window.devicePixelRatio||1;
+  if(cv.width!==Math.round(w*dpr)||cv.height!==Math.round(h*dpr)){cv.width=Math.round(w*dpr);cv.height=Math.round(h*dpr)}
+  var ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  if(view!=='charts')return;
+  var arr=symDraws();
+  if(DT.cur)arr=arr.concat([DT.cur]);
+  var dg=(SYMBOLS[termSym]||{digits:5}).digits,light=document.documentElement.getAttribute('data-theme')==='light',CW=light?'#151B26':'#E8ECF6';
+  arr.forEach(function(d,i){
+   var sel=DT.cur?i===arr.length-1:i===DSEL.idx;
+   var p1=toXY(d.p1);if(!p1)return;
+   var p2=d.p2?toXY(d.p2):null,col=dColor(d);
+   ctx.strokeStyle=col;ctx.fillStyle=col;ctx.lineWidth=(d.w||1.4)+(sel?.8:0);ctx.setLineDash(d.dash?[6,4]:[]);ctx.font='10px IBM Plex Mono';
+   var pts=[];
+   if(d.type==='hline'){
+    ctx.beginPath();ctx.moveTo(0,p1.y);ctx.lineTo(w,p1.y);ctx.stroke();ctx.setLineDash([]);
+    axisTag(ctx,w,p1.y,pxf(d.p1.pr,dg),col,'#000');pts=[[w*0.45,p1.y]]}
+   else if(d.type==='vline'){
+    ctx.beginPath();ctx.moveTo(p1.x,0);ctx.lineTo(p1.x,h);ctx.stroke();ctx.setLineDash([]);
+    var lt=fmtDT(d.p1.t),lw=ctx.measureText(lt).width+8;ctx.fillRect(p1.x-lw/2,h-30,lw,15);ctx.fillStyle='#000';ctx.fillText(lt,p1.x-lw/2+4,h-19.5);pts=[[p1.x,h*0.4]]}
+   else if(p2){
+    pts=[[p1.x,p1.y],[p2.x,p2.y]];
+    if(d.type==='trend'||d.type==='arrow'){
+     ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.setLineDash([]);
+     if(d.type==='arrow'){var an=Math.atan2(p2.y-p1.y,p2.x-p1.x),L=12;ctx.beginPath();ctx.moveTo(p2.x,p2.y);ctx.lineTo(p2.x-L*Math.cos(an-.45),p2.y-L*Math.sin(an-.45));ctx.lineTo(p2.x-L*Math.cos(an+.45),p2.y-L*Math.sin(an+.45));ctx.closePath();ctx.fill()}}
+    else if(d.type==='rect'){
+     var rx=Math.min(p1.x,p2.x),ry=Math.min(p1.y,p2.y),rw=Math.abs(p2.x-p1.x),rh=Math.abs(p2.y-p1.y);
+     ctx.globalAlpha=.12;ctx.fillRect(rx,ry,rw,rh);ctx.globalAlpha=1;ctx.strokeRect(rx,ry,rw,rh)}
+    else if(d.type==='fib'){
+     var x1=Math.min(p1.x,p2.x),x2=Math.max(p1.x,p2.x);
+     ctx.globalAlpha=.4;ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.globalAlpha=1;
+     FIBL.forEach(function(f){
+      var pr=d.p1.pr+(d.p2.pr-d.p1.pr)*f,yy=chart.cs.priceToCoordinate(pr);if(yy===null)return;
+      ctx.strokeStyle=col;ctx.globalAlpha=.8;ctx.beginPath();ctx.moveTo(x1,yy);ctx.lineTo(x2,yy);ctx.stroke();
+      ctx.globalAlpha=1;ctx.fillStyle=CW;ctx.fillText((f*100).toFixed(1)+'  '+pxf(pr,dg),x1+3,yy-3)})}
+    ctx.setLineDash([])}
+   if(sel){var r=PT()?7.5:5.5;pts.forEach(function(pt){
+    ctx.beginPath();ctx.arc(pt[0],pt[1],r,0,7);ctx.fillStyle=col;ctx.fill();ctx.lineWidth=2;ctx.strokeStyle='#fff';ctx.stroke()})}});
+  if(LOUPE){var L2=LOUPE;
+   ctx.strokeStyle='rgba(160,170,190,.55)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+   ctx.beginPath();ctx.moveTo(0,L2.y);ctx.lineTo(w,L2.y);ctx.moveTo(L2.x,0);ctx.lineTo(L2.x,h);ctx.stroke();ctx.setLineDash([]);
+   axisTag(ctx,w,L2.y,pxf(L2.pr,dg),'#4D8DFF','#fff');
+   var txt=pxf(L2.pr,dg)+' · '+fmtDT(L2.t);ctx.font='11px IBM Plex Mono';var bw=ctx.measureText(txt).width+14,bx=Math.max(4,Math.min(w-bw-66,L2.x-bw/2)),by=Math.max(4,L2.y-(PT()?78:40));
+   ctx.fillStyle='rgba(30,34,44,.94)';ctx.fillRect(bx,by,bw,22);ctx.fillStyle='#E8ECF6';ctx.fillText(txt,bx+7,by+15)}}
 var redrawT=0;
 function scheduleDrawRedraw(){
  if(chart.drawRaf)return;chart.drawRaf=requestAnimationFrame(function(){chart.drawRaf=0;redrawT=Date.now();redrawDrawings()})}
@@ -1975,8 +2031,10 @@ function frameChartWindow(){
  var last=chart.candleArr[chart.candleArr.length-1],from=last.time-TFSEC[chart.tf]*110,to=last.time+TFSEC[chart.tf]*6;
  try{chart.c.timeScale().setVisibleRange({from:from,to:to})}catch(e){}
 }
+function barCountdown(){var sec=TFSEC[chart.tf]||60,rem=Math.max(0,Math.ceil(sec-(Date.now()/1e3)%sec)),h=Math.floor(rem/3600),m=Math.floor(rem%3600/60),s=rem%60;function z(n){return(n<10?'0':'')+n}return(h?h+':'+z(m):z(m))+':'+z(s)}
 function syncLivePriceLines(){if(!chart.cs)return;var q=Q[chart.sym],C=DB.settings.chart||{};if(!q||!(q.bid>0))return;
- try{if(chart.liveLines.bid)chart.liveLines.bid.applyOptions({price:q.bid,title:'BID'});if(chart.liveLines.ask&&C.askLine!==false&&q.ask>0)chart.liveLines.ask.applyOptions({price:q.ask,title:'ASK'})}catch(e){}}
+  try{if(chart.liveLines.bid)chart.liveLines.bid.applyOptions({price:q.bid,title:C.countdown!==false?barCountdown():'BID'});if(chart.liveLines.ask&&C.askLine!==false&&q.ask>0)chart.liveLines.ask.applyOptions({price:q.ask,title:'ASK'})}catch(e){}}
+setInterval(function(){if(view==='charts')syncLivePriceLines()},1000);
 var lastMeta='';
 function paintCmeta(){var m=$('#cmeta');if(!m)return;
  var S=SYMBOLS[termSym],q=Q[termSym];
@@ -1999,7 +2057,7 @@ function chartTick(sym,tick){if(!chart.cs||!chart.cur||sym!==chart.sym)return;va
   syncLivePriceLines();if(chart.following)chart.c.timeScale().scrollToRealTime();scheduleDrawRedraw()}catch(e){}}
 function tfModal(){
  var all=[['1m','M1'],['5m','M5'],['15m','M15'],['30m','M30'],['1h','H1'],['4h','H4'],['1d','D1'],['1w','W1'],['1mo','MN']];
- modal('<div class="radialHead">'+(TFLBL[chart.tf]||chart.tf)+' <small>TIMEFRAME</small></div><div class="radial">'+all.map(function(t,i){return'<button class="radialBtn '+(chart.tf===t[0]?'on':'')+'" data-tfp="'+t[0]+'" style="--i:'+i+'">'+t[1]+'</button>'}).join('')+'<button class="radialCenter" onclick="closeModal()">×</button></div><div class="radialTools"><button title="Indicators" onclick="indicatorCatalog()">f</button><button title="Objects" onclick="closeModal();chart.dtOn=true;openCharts()">⌗</button><button title="Settings" onclick="chartSettings()">⚙</button><button title="New order" onclick="closeModal();orderTicket()">＋</button></div>');
+ modal('<div class="radialHead">'+(TFLBL[chart.tf]||chart.tf)+' <small>TIMEFRAME</small></div><div class="radial">'+all.map(function(t,i){return'<button class="radialBtn '+(chart.tf===t[0]?'on':'')+'" data-tfp="'+t[0]+'" style="--i:'+i+'">'+t[1]+'</button>'}).join('')+'<button class="radialCenter" onclick="closeModal()">×</button></div><div class="radialTools"><button title="Indicators" onclick="indicatorCatalog()">f</button><button title="Objects" onclick="objectsModal()">⌗</button><button title="Settings" onclick="chartSettings()">⚙</button><button title="New order" onclick="closeModal();orderTicket()">＋</button></div>');
  $$('[data-tfp]').forEach(function(ch){ch.onclick=function(){var next=ch.getAttribute('data-tfp');if(TFS.indexOf(next)<0){toast('Biquote interval unavailable','wn');return}chart.tf=next;DB.settings.lastTf=next;save();closeModal();DSEL.idx=-1;DSEL.drag=null;syncCvCapture();chartLoad();var t=$('#chartTitleTf');if(t)t.textContent=TFLBL[next]||next}})}
 
 /* shell — Quotes → Charts → Trade → History → Messages; advanced tools stay in drawer */
@@ -2203,7 +2261,13 @@ function openCharts(){var el=$('#v-charts');
  '</div>'+ 
  (chart.sessOn?'<div class="sessrow" id="sessRow"></div>':'')+
  '<div id="chartBox"><span id="mBid" style="display:none"></span><span id="mAsk" style="display:none"></span><span id="mSymName" style="display:none"></span><span id="mSymState" style="display:none"></span><span id="mSymStatus" style="display:none"></span><div class="charttitle"><b id="chartTitleSym">'+termSym+'</b><span>›</span><b id="chartTitleTf">'+(TFLBL[chart.tf]||chart.tf)+'</b><small id="chartTitleDesc">'+esc((SYMBOLS[termSym]||{}).desc||'')+'</small></div>'+ 
-  '<div id="mainWrap"><div id="chartEl"></div><canvas id="drawCv"></canvas><button class="chart-live-btn" id="chartLive" aria-label="Return to current price" title="Current price">›</button>'+
+   '<div id="mainWrap"><div id="chartEl"></div><canvas id="drawCv"></canvas><button class="chart-live-btn" id="chartLive" aria-label="Return to current price" title="Current price">›</button>'+
+    '<div id="dSelBar" class="dselbar"><span class="grip">⋮⋮</span><b id="dSelName"></b>'+
+     '<button id="dsEdit" aria-label="Edit object"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/></svg></button>'+
+     '<button id="dsCopy" aria-label="Copy object"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="8" y="8" width="12" height="13" rx="1.5"/><path d="M16 8V4H4v13h4"/></svg></button>'+
+     '<button id="dsDel" class="del" aria-label="Delete object"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14M10 11v6M14 11v6"/></svg></button>'+
+     '<button id="dsClose" aria-label="Deselect" style="color:#8C93A3">✕</button></div>'+
+    '<div id="dUndo" class="dundo">Object deleted <button id="dsUndo">UNDO</button></div>'+
    '<div class="cmeta" id="cmeta"></div>'+
    '<div id="dtBar" style="display:'+(chart.dtOn?'flex':'none')+'"></div>'+
    '<div id="posStrip"></div></div>'+
@@ -2226,7 +2290,9 @@ function openCharts(){var el=$('#v-charts');
  $('#chartLive').onclick=followLive;
  if(chart.sessOn)paintSessions();
  chart.sym=termSym;chartLoad();renderStrip();
- paintDtBar();bindDrawEvents();bindTargetGestures();bindPriceScaleGesture();bindChartWheelZoom();bindOscHandle();syncCvCapture()}
+  $('#dsEdit').onclick=editSelected;$('#dsCopy').onclick=copySelected;$('#dsDel').onclick=deleteSelected;$('#dsClose').onclick=function(){selectDrawing(-1)};$('#dsUndo').onclick=undoDelete;
+  try{var mw=$('#mainWrap');if(window.ResizeObserver&&mw){new ResizeObserver(function(){scheduleDrawRedraw()}).observe(mw)}}catch(e){}
+  paintDtBar();bindDrawEvents();bindTargetGestures();bindPriceScaleGesture();bindChartWheelZoom();bindOscHandle();syncCvCapture();paintSelBar()}
 function bindOscHandle(){var h=$('#oscHandle');if(!h||h._b)return;h._b=1;
  var sy=0,sh=0;
  h.addEventListener('pointerdown',function(e){sy=e.clientY;sh=$('#oscPane').offsetHeight;h.setPointerCapture(e.pointerId);e.preventDefault()});
